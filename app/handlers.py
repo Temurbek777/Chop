@@ -8,22 +8,36 @@ from aiogram.types import (
     ReplyKeyboardMarkup,
     ReplyKeyboardRemove,
 )
-import app.keyboards as kb
+import keyboards as kb
 from create_bot import TOKEN, bot
 from docx2pdf import convert
-from .Converter import convert_docx_to_pdf,convert_pptx_to_pdf,convert_image_to_pdf
+from Converter import convert_docx_to_pdf,convert_pptx_to_pdf,convert_image_to_pdf
+from utils import UploadDocumentFile, UploadPhoto
 import pandas as pd
 import pdfkit
 import requests
 import cups
 import os
 
+
+DOCUMENTS_DIR = 'Documents'
+PHOTOS_DIR = 'Photos'
+
+PDF_FILE = "File.pdf"
+DOCX_FILE = "File.docx"
+XLSX_FILE = "File.xlsx"
+PPTX_FILE = "File.pptx"
+TXT_FILE = "File.txt"
+
+JPG_FILE = "File.jpg"
+
+PRINT_FILE_ROUTE = ""
+
 #----------------------------CREATING CONNECTION FROM CUPS--------------------------------#
 conn = cups.Connection()
 printers = conn.getPrinters()
 form_router = Router()
 options = {}
-route = ''
 printer_name = list(printers.keys())[0]
 print(printer_name)
 
@@ -47,8 +61,8 @@ class Form(StatesGroup):
 @form_router.message(CommandStart())
 async def command_start(message: Message, state: FSMContext) -> None:
     await state.set_state(Form.language)
-    # await message.answer("Choose the language", reply_markup=ReplyKeyboardRemove())
-    await message.answer(text='Tilni tanlang\nВыберите язык\nChoose the language', reply_markup=kb.langs
+    await message.answer(text='Tilni tanlang\nВыберите язык\nChoose the language',
+                         reply_markup=kb.langs
                          )
 #----------------------------------------------------------------------------------------------
 
@@ -60,13 +74,16 @@ async def process_language(message: Message, state: FSMContext) -> None:
     await state.set_state(Form.command)
     data = await state.get_data()
     if data['lang'] == "UZB":
-        await message.answer("Tanlang", reply_markup=kb.chop_uz
+        await message.answer("Tanlang",
+                             reply_markup=kb.chop_uz
                              )
     elif data['lang'] == "RU":
-        await message.answer("Выберите команду", reply_markup=kb.chop_rus
+        await message.answer("Выберите команду",
+                             reply_markup=kb.chop_rus
                              )
     elif data['lang'] == "ENG":
-        await message.answer("Choose the command", reply_markup=kb.chop_en
+        await message.answer("Choose the command",
+                             reply_markup=kb.chop_en
                              )
 #---------------------------------------------------------------------------------------
 
@@ -89,7 +106,7 @@ async def command_print(message: Message, state: FSMContext) -> None:
     await state.set_state(Form.file)
     await state.update_data(command=message.text)
     await message.answer(
-        "Faylni yuboring",
+        "Faylni yuboring (.pdf, .docx, .xlsx, .pptx, .jpg, .png)",
         reply_markup=ReplyKeyboardRemove(),
     )
 #-----------------------------------------------------------------------------------------
@@ -112,129 +129,72 @@ async def command_print(message: Message, state: FSMContext) -> None:
 async def process_file(message: Message, state: FSMContext) -> None:
     if message.document:
         await state.update_data(file=message.document.file_name)
-        await state.set_state(Form.copy)
         await message.reply("Iltmos kuting!")
         file_id = message.document.file_id
-        file_info = await bot.get_file(file_id)
-        file_path = file_info.file_path
-        file_extension = message.document.file_name.split('.')[-1]
-        print(file_extension)
-        download_url = f'https://api.telegram.org/file/bot{TOKEN}/{file_path}'
-        # print(download_url)
-        res = requests.get(download_url)
-#==============================IF FILE DOWNLOADED SUCCESSFULLY=============================
-        if res.status_code == 200:
-#==============================IF FILE FORMAT IS ============== PDF ======================================
-            if file_extension == 'pdf':
-                directory = 'Documents'
-                file_name = "File.pdf"
-                file_path = os.path.join(directory, file_name)
-                with open(file_path, 'wb') as file:
-                    file.write(res.content)
-                    print("File downloaded")
-                    global route
-                    route = file_path
-#==============================IF FILE FORMAT IS ============== DOCX ======================================
-            elif file_extension == 'docx':
-                directory = 'Documents'
-                file_name = "File.docx"
-                file_path = os.path.join(directory, file_name)
-                with open(file_path, 'wb') as file:
-                    file.write(res.content)
-                    print("File downloaded")
-                    # route = os.path.abspath('File.docx')
-                    convert_docx_to_pdf(file_path, '/home/temurbek/PycharmProjects/Chop/Documents/')
-                    route = "/home/temurbek/PycharmProjects/Chop/Documents/File.pdf"
-#==============================IF FILE FORMAT IS ============== TXT ======================================
-            elif file_extension == 'txt':
-                directory = 'Documents'
-                file_name = "File.txt"
-                file_path = os.path.join(directory, file_name)
-                with open(file_path, 'wb') as file:
-                    file.write(res.content)
-                    print("File downloaded")
-                    route = file_path
-                    print(route)
-#==============================IF FILE FORMAT IS ============== XLSX ======================================
-            elif file_extension == 'xlsx':
-                directory = 'Documents'
-                file_name = "File.xlsx"
-                file_path = os.path.join(directory, file_name)
-                with open(file_path, 'wb') as file:
-                    file.write(res.content)
-                    print("File downloaded")
-                    # route = os.path.abspath('File.xlsx')
-                    # print(route)
-                    df = pd.read_excel(file_path)
-                    html = df.to_html()
-                    pdfkit.from_string(html, '/home/temurbek/PycharmProjects/Chop/Documents/File.pdf')
-                    route = '/home/temurbek/PycharmProjects/Chop/Documents/File.pdf'
-#==============================IF FILE FORMAT IS ============== PPTX ======================================
-            elif file_extension == 'pptx':
-                directory = 'Documents'
-                file_name = "File.pptx"
-                file_path = os.path.join(directory, file_name)
-                with open(file_path, 'wb') as file:
-                    file.write(res.content)
-                    print("File downloaded")
-                    # route = os.path.abspath('File.pptx')
-                    # print(route)
-                    convert_pptx_to_pdf(file_path, '/home/temurbek/PycharmProjects/Chop/Documents/File.pdf')
-                    route = "/home/temurbek/PycharmProjects/Chop/Documents/File.pdf"
-
+        global PRINT_FILE_ROUTE
+        PRINT_FILE_ROUTE = await UploadDocumentFile(file_id, message)
+        print(PRINT_FILE_ROUTE)
+        if PRINT_FILE_ROUTE == 0:
+            await message.answer(
+                f"Bu fayl kengaytmasi qo'llab quvvatlanmaydi!\nIltmos quyidagi ketgaymali fayl yuboring yoki faylingizni quyidagi kengaytmaga o'tqazing\n.pdf, .docx, .xlsx, .pptx, .jpg, .png"
+            )
+        elif PRINT_FILE_ROUTE is None:
+            await message.answer(
+                f"Faylni yuklashda xato\nIltmos quyidagi kengaytmali fayl yuboring yoki faylingizni quyidagi kengaytmaga o'tqazing\n.pdf, .docx, .xlsx, .pptx, .jpg, .png"
+            )
         else:
-            print("Failed to download the file")
-
+            await state.set_state(Form.copy)
+            data = await state.get_data()
+            if data['lang'] == 'UZB':
+                await message.answer(
+                    f"Nusxalar sonini kiriting"
+                )
+            elif data['lang'] == 'RU':
+                await message.answer(
+                    f"Введите количество копий"
+                )
+            elif data['lang'] == 'ENG':
+                await message.answer(
+                    f"Enter the copy number"
+                )
 
         #  print(route)
 #=============================IF THE FILE PHOTO===============================================
     elif message.photo:
-        file_id = message.photo[-1].file_id  # Highest resolution
-        print(file_id)
         await state.update_data(file=message.photo[-1].file_id)
-        await state.set_state(Form.copy)
 
         file_id = message.photo[-1].file_id
-        file_info = await bot.get_file(file_id)
-        file_path = file_info.file_path
-        file_extension = file_path.split('.')[-1]
-        print(file_path)
-        print(file_extension)
-        download_file = await bot.download_file(file_path)
-        download_url = f'https://api.telegram.org/file/bot{TOKEN}/{file_path}'
-        print(download_file)
-        res = requests.get(download_url)
-        if res.status_code == 200:
-            if file_extension == "jpg" or file_extension == "png":
-                directory = 'Photos'
-                file_name = "File.jpg"
-                file_path = os.path.join(directory, file_name)
-                with open(file_path, 'wb') as file:
-                    file.write(res.content)
-                    print("File downloaded")
-                route = "/home/temurbek/PycharmProjects/Chop/Photos/File.jpg"
-                print(route)
-                route = convert_image_to_pdf(route)
-                print(route)
+        photo_file_route = await UploadPhoto(file_id, message)
 
+        if photo_file_route == 0:
+            await message.answer(
+                f"Bu fayl kengaytmasi qo'llab quvvatlanmaydi!\nIltmos quyidagi ketgaymali fayl yuboring yoki faylingizni quyidagi kengaytmaga o'tqazing\n.pdf, .docx, .xlsx, .pptx, .jpg, .png"
+            )
+        elif photo_file_route is None:
+            await message.answer(
+                f"Faylni yuklashda xato\nIltmos quyidagi kengaytmali fayl yuboring yoki faylingizni quyidagi kengaytmaga o'tqazing\n.pdf, .docx, .xlsx, .pptx, .jpg, .png"
+            )
         else:
-            print("Failed to download the file")
+            PRINT_FILE_ROUTE = convert_image_to_pdf(photo_file_route)
+            print(PRINT_FILE_ROUTE)
+            await state.set_state(Form.copy)
+            data = await state.get_data()
+            if data['lang'] == 'UZB':
+                await message.answer(
+                    f"Nusxalar sonini kiriting"
+                )
+            elif data['lang'] == 'RU':
+                await message.answer(
+                    f"Введите количество копий"
+                )
+            elif data['lang'] == 'ENG':
+                await message.answer(
+                    f"Enter the copy number"
+                )
 
 
 
-    data = await state.get_data()
-    if data['lang'] == 'UZB':
-        await message.answer(
-            f"Nusxalar sonini kiriting"
-        )
-    elif data['lang'] == 'RU':
-        await message.answer(
-            f"Введите количество копий"
-        )
-    elif data['lang'] == 'ENG':
-        await message.answer(
-            f"Enter the copy number"
-        )
+
 #-----------------------------------------------------------------------------------------------
 
 
@@ -339,7 +299,7 @@ async def process_pages(message: Message, state: FSMContext) -> None:
     options['page-ranges'] = data['page-ranges']
     options['number-up'] = data['number-up']
     print(options)
-    print(route)
+    print(PRINT_FILE_ROUTE)
     await state.clear()
 #-------------------------------------------------------------------------------------------------
 
@@ -352,6 +312,6 @@ async def final_print(message: Message) -> None:
         reply_markup=ReplyKeyboardRemove(),
     )
     #print(route)
-    job_id = conn.printFile(printer_name, route, "Test Print", options=options)
+    job_id = conn.printFile(printer_name, PRINT_FILE_ROUTE, "Test Print", options=options)
     print(job_id)
 #--------------------------------------------------------------------------------------------------
